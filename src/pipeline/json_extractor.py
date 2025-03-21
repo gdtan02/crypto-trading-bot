@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Dict
 from src.models.response_model import ResponseModel
 from src.utils.utils import load_json
+from config.settings import ENDPOINTS_PARAMS
 from config.paths import RAW_DATA_DIR, PROCESSED_DATA_DIR, ETL_LOG_DIR
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class JSONExtractor:
 
         # Read the JSON file
         try:
-            json_filename = os.path.join(RAW_DATA_DIR, f"long-{symbol}-{category}.json")
+            json_filename = os.path.join(RAW_DATA_DIR, f"new-{symbol}-{category}.json")
             responses = load_json(json_filename)
             if responses is None:
                 return ResponseModel(is_success=False, message="Failed to load. The data is empty.", data=None)
@@ -68,14 +69,20 @@ class JSONExtractor:
         # Extract data into Pandas DataFrames and merge into single dataframe
         df_list = []
         for response in responses:
-            df = pd.DataFrame(response["data"]).drop(columns="start_time").set_index("date")
+            df = pd.DataFrame(response["data"]).drop(columns="start_time")
+
+            if ENDPOINTS_PARAMS[category][response["endpoint"]]["window"] == "day":
+                df.rename(columns={"date": "datetime"}, inplace=True)
+
+            df["datetime"] = pd.to_datetime(df["datetime"])
+            df.set_index("datetime", inplace=True)
             df_list.append(df)
 
         self.data = pd.concat(df_list, sort=True, axis=1)
 
         # Save CSV
         try:
-            csv_filename = f"long-{symbol}-{category}.csv"
+            csv_filename = f"new-{symbol}-{category}.csv"
             self.data.to_csv(os.path.join(RAW_DATA_DIR, csv_filename))
             logger.info(f"{csv_filename} has been saved successfully.")
             return ResponseModel(is_success=True, message=None, data=self.data)
